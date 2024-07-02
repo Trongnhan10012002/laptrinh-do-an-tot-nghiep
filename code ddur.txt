@@ -1,0 +1,255 @@
+from datetime import date, datetime, time 
+import webbrowser
+import time
+from youtube_search import YoutubeSearch
+import re
+import wikipedia
+import os
+import serial
+import pyttsx3
+import speech_recognition as sr
+from gtts import gTTS
+import playsound
+
+# Configuration
+wikipedia.set_lang("vi")
+ser = serial.Serial("COM3", 9600)
+
+# Helper functions
+def SerialWrite(command):
+    ser.write(command.encode())
+
+def speak(text):
+    print("Pi: " + text)
+    tts = gTTS(text=text, lang="vi", slow=False)
+    tts.save("sound.mp3")
+    playsound.playsound("sound.mp3", True)
+    os.remove("sound.mp3")
+
+def hear():
+    print("Đang nghe:...")
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("Tôi: ", end='')
+        audio = r.listen(source, phrase_time_limit=5)
+        try:
+            text = r.recognize_google(audio, language="vi-VN")
+            print(text)
+            return text.lower()
+        except:
+            print("...")
+            return None
+
+def stop():
+    speak("Hẹn gặp lại bạn sau!")
+
+def get_text():
+    for _ in range(3):
+        text = hear()
+        if text:
+            return text.lower()
+        speak("Mình không nghe rõ bạn nói. Vui lòng nói lại nha!")
+    stop()
+    return None
+
+def play_youtube():
+    speak("Nói nội dung bạn muốn tìm trên youtube")
+    search = get_text()
+    while search:
+        result = YoutubeSearch(search, max_results=10).to_dict()
+        if result:
+            url = "https://www.youtube.com" + result[0]['url_suffix']
+            webbrowser.open(url)
+            speak("Đây là thứ mà tôi tìm được, bạn xem qua nhé")
+            break
+
+def open_website(text):
+    reg_ex = re.search('mở (.+)', text)
+    if reg_ex:
+        domain = reg_ex.group(1)
+        url = "https://www." + domain
+        webbrowser.open(url)
+        speak("Trang web bạn yêu cầu đã được mở.")
+        return True
+    return False
+
+def open_google_and_search(text):
+    search_for = text.split("kiếm", 1)[1]
+    url = f"https://www.google.com/search?q={search_for}"
+    webbrowser.open(url)
+    speak("Đây là thông tin bạn cần tìm")
+
+def open_google_and_search2():
+    speak("Nói thứ bạn cần tìm kiếm trên google")
+    search = get_text()
+    if search:
+        url = f"https://www.google.com/search?q={search}"
+        webbrowser.open(url)
+        speak("Đây là thông tin bạn cần tìm")
+
+def tell_me_about():
+    try:
+        speak("Bạn muốn nghe về gì?")
+        text = get_text()
+        if text:
+            contents = wikipedia.summary(text).split('\n')
+            speak(contents[0])
+            time.sleep(10)
+            for content in contents[1:]:
+                speak("Bạn muốn nghe thêm không?")
+                ans = get_text()
+                if "có" not in ans:
+                    break
+                speak(content)
+                time.sleep(10)
+        speak('Cảm ơn bạn đã lắng nghe')
+    except:
+        speak("Mình không hiểu ý của bạn. Xin mời bạn nói lại")
+
+# Action functions
+def greet():
+    speak("Chào bạn, chúc bạn một ngày vui vẻ")
+
+def origin():
+    speak("Mình đến từ Việt Nam")
+
+def current_time():
+    now = datetime.now()
+    if "giờ":
+        t = now.strftime("%H h, %M phút, %S giây")
+        speak(t)
+def current_time1():
+    now = datetime.now()
+    if "ngày":
+        t = now.strftime("Ngày %d/%m/%Y")
+        speak(t)
+
+def goodbye():
+    stop()
+    return True
+
+def control_mirrors(you):
+    if any(phrase in you for phrase in ["nhả gương", "nhã gương", "mở gương"]):
+        SerialWrite('M')
+        speak("Đã mở gương")
+    elif any(phrase in you for phrase in ["gập gương", "gặp gương"]):
+        SerialWrite('G')
+        speak("Đã gập gương")
+    elif "tắt chế độ" in you or "thoát chế độ" in you:
+        SerialWrite('T')
+        speak("Đã tắt chế độ")
+        return True
+    return False
+
+def control_ig(you):
+    if "khóa ig" in you or "khóa nguồn" in you:
+        SerialWrite('X')
+        speak("Đã khóa IG")
+    elif any(phrase in you for phrase in ["tắt khóa ig", "mở nguồn", "bật ig"]):
+        SerialWrite('x')
+        speak("Đã mở IG")
+
+def control_lights(you):
+    light_commands = {
+        "đèn kích thước": ('F', 'f', "đã mở đèn kích thước", "đã tắt đèn kích thước"),
+        "đèn chiếu gần": ('H', 'h', "đã mở đèn chiếu gần", "đã tắt đèn chiếu gần"),
+        "đèn chiếu xa": ('U', 'u', "đã mở đèn chiếu xa", "đã tắt đèn chiếu xa"),
+        "đèn ưu tiên": ('Z', 'z', "đã mở đèn ưu tiên", "đã tắt đèn ưu tiên"),
+        "đèn xi nhan phải": ('T', 't', "đã mở đèn xi nhan phải", "đã tắt đèn xi nhan phải"),
+        "đèn xi nhan trái": ('V', 'v', "đã mở đèn xi nhan trái", "đã tắt đèn xi nhan trái"),
+        "tất cả đèn": ('A', 'a', "đã mở tất cả đèn", "đã tắt tất cả đèn")
+    }
+    for key, value in light_commands.items():
+        if key in you:
+            if "bật" in you:
+                SerialWrite(value[0])
+                speak(value[2])
+            elif "tắt" in you:
+                SerialWrite(value[1])
+                speak(value[3])
+            if "tất cả đèn" in you or "tất cả" in you:
+                return True
+    return False
+
+def control_powerwindows(you):
+    power_windows = {
+        "kính tài xế": ('L', 'l', '1', '4', '2', '5', '3', '6', "Đã nâng hết kính tài xế", "Đã hạ hết kính tài xế", "Đã nâng một phần tư kính tài xế", "Đã hạ một phần tư kính tài xế", "Đã nâng một nửa kính tài xế", "Đã hạ một nửa kính tài xế", "Đã nâng ba phần tư kính tài xế", "Đã hạ ba phần tư kính tài xế"),
+        "kính phụ": ('R', 'r', '7', '0', '8', '`', '9', '-', "Đã nâng hết kính bên phụ", "Đã hạ hết kính bên phụ", "Đã nâng một phần tư kính bên phụ", "Đã hạ một phần tư kính bên phụ", "Đã nâng một nửa kính bên phụ", "Đã hạ một nửa kính bên phụ", "Đã nâng ba phần tư kính bên phụ", "Đã hạ ba phần tư kính bên phụ"),
+        "kính sau tài": ('S', 's', '_', '*', '+', '&', '=', '^', "Đã nâng hết kính sau tài xế", "Đã hạ hết kính sau tài xế", "Đã nâng một phần tư kính sau tài xế", "Đã hạ một phần tư kính sau tài xế", "Đã nâng một nửa kính sau tài xế", "Đã hạ một nửa kính sau tài xế", "Đã nâng ba phần tư kính sau tài xế", "Đã hạ ba phần tư kính sau tài xế"),
+        "kính sau phụ": ('P', 'p', '%', '@', '$', '!', '#', '~', "Đã nâng hết kính sau phụ", "Đã hạ hết kính sau phụ", "Đã nâng một phần tư kính sau phụ", "Đã hạ một phần tư kính sau phụ", "Đã nâng một nửa kính sau phụ", "Đã hạ một nửa kính sau phụ", "Đã nâng ba phần tư kính sau phụ", "Đã hạ ba phần tư kính sau phụ")
+    }
+    
+    for key, values in power_windows.items():
+        if key in you:
+            if "nâng" in you or "lên" in you:
+                if "1/4" in you:
+                    SerialWrite(values[2])
+                    speak(values[10])
+                elif "1/2" in you:
+                    SerialWrite(values[4])
+                    speak(values[12])
+                elif "3/4" in you:
+                    SerialWrite(values[6])
+                    speak(values[14])
+                else:
+                    SerialWrite(values[0])
+                    speak(values[8])
+            elif "hạ" in you or "xuống" in you:
+                if "1/4" in you:
+                    SerialWrite(values[3])
+                    speak(values[11])
+                elif "1/2" in you:
+                    SerialWrite(values[5])
+                    speak(values[13])
+                elif "3/4" in you:
+                    SerialWrite(values[7])
+                    speak(values[15])
+                else:
+                    SerialWrite(values[1])
+                    speak(values[9])
+    return False
+
+
+
+# Action dictionary
+actions = {
+    "xin chào": greet,
+    "đến từ đâu": origin,
+    "bây giờ": current_time,
+    "hôm nay": current_time1,
+    "tạm biệt": goodbye,
+    "thông tin": tell_me_about,
+    "tìm kiếm": open_google_and_search2,
+    "youtube": play_youtube
+}
+
+def execute_command(you):
+    for key in actions:
+        if key in you:
+            if actions[key]() == True:
+                return True
+            return False
+    if "tìm kiếm" in you:
+        open_google_and_search(you)
+    elif control_mirrors(you):
+        return True
+    elif control_ig(you):
+        return False
+    elif control_lights(you):
+        return True
+    elif control_powerwindows(you):
+        return True
+    return False
+
+def main():
+    speak("Xin chào! Mình là trợ lý ảo của Trường Đại học HUTECH. Bạn cần mình hỗ trợ gì không?")
+    while True:
+        you = hear()
+        if not you:
+            speak("Bạn có thể nói lại được không?")
+            continue
+
+        if execute_command(you):
+            break
+if __name__ == "__main__":
+    main()
